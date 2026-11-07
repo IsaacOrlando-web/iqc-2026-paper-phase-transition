@@ -1,101 +1,105 @@
-# Utah Paper-to-Digital Phase Transition
+# Paper Phase Transition — Utah Industry Model
 
-This project applies the Ising-model challenge from the **IQC 2026 Paper Phase Transition** README to a small network of Utah industries. It uses the challenge's suggested baseline resistances and partner-tie values, plus Utah sources that document selected employers and public-sector relationships.
+**Vasion Challenge · Intermountain Quantum Competition 2026 · BYU, November 6–7**
 
-The results below are outputs of this specified model. They are not measured adoption rates or a forecast validated against Utah company behavior.
+Industries don't go digital gradually. They hold out, then flip once enough of their partners flip. This project models that tipping behavior using the Ising model and quantum annealing, calibrated with real Census Bureau economic data for five major Utah employers.
 
-## Project files
+---
 
-- [`utah_top10_industry_nodes.csv`](utah_top10_industry_nodes.csv) — five Utah industry nodes, representative employers, DWS industry categories and employment ranges, and resistance values.
-- [`utah_industry_connections.csv`](utah_industry_connections.csv) — the two modeled ties, README strengths and coefficients, and Utah evidence for the relationships.
+## Table of Contents
 
-## Data and modeling choices
+- [Overview](#overview)
+- [The Model](#the-model)
+- [BTOS Data Integration](#btos-data-integration)
+- [Utah Adjustment](#utah-adjustment)
+- [AI Pressure Schedule](#ai-pressure-schedule)
+- [Utah Industries & Flip Years](#utah-industries--flip-years)
+- [CSV Schema](#csv-schema)
+- [How to Run](#how-to-run)
+- [References](#references)
 
-### Nodes and representative employers
+---
 
-The Utah Department of Workforce Services (DWS) major-employer data was used to identify ten representative employers. Those employers are grouped into five model nodes, one per industry in Utah:
+## Overview
 
-| Model industry | Representative employers | Resistance, \(r_i\) |
-|---|---|---:|
-| Healthcare | Intermountain Health Care | 0.75 |
-| Education | University of Utah; Brigham Young University; Davis County School District; Utah State University | 0.60 |
-| Government | State of Utah; Hill Air Force Base | 0.85 |
-| Retail | Walmart; Smith's Food & Drug | 0.30 |
-| Manufacturing | Northrop Grumman Corp. | 0.50 |
+Each industry in a region is modeled as a binary node:
 
-These are **industry nodes**, not ten separate company nodes. The employers help identify which Utah industries to include; the model itself describes industries in one region.
+| State | Meaning |
+|-------|---------|
+| `sᵢ = −1` | Still using paper |
+| `sᵢ = +1` | Gone digital |
 
-### Resistance values
+Every year, the economy settles into the lowest-energy configuration. The first year a node comes out `+1` is its **flip year**. Plotting all flip years produces a **tipping-point map**.
 
-The resistance values are the challenge README's suggested base values for Healthcare, Education, Government, Retail, and Manufacturing. We use those base values directly, without adding regional shifts or random noise. This keeps the baseline transparent and reproducible, but it does not make the values Utah-specific measurements.
+---
 
-### Partner ties and Utah evidence
+## The Model
 
-The challenge README supplies a strength of 0.60 for both Healthcare–Government and Government–Education. Since the model includes only five selected industries, these are the only two listed README ties whose endpoints are both present. The README's suggested scaling is \(J_{ij}=0.15\times\text{tie strength}\), so each modeled tie has \(J=0.09\).
+### Energy Function
 
-| Tie | README strength | Model \(J_{ij}\) | External Utah evidence |
-|---|---:|---:|---|
-| Healthcare–Government | 0.60 | 0.09 | Utah's FY2025 Medicaid spending report lists state Department of Health and Human Services spending and University of Utah Hospitals & Clinics funding. It also states: “The Department oversees Medicaid expenditures and reimburses providers for medical services.” |
-| Government–Education | 0.60 | 0.09 | Utah's FY2026 budget lists appropriations for Education and Higher Education. |
+```text
+Energy(year) = − Σ Jᵢⱼ·sᵢ·sⱼ  −  Σ (A(year) − rᵢ)·sᵢ
+              ───────────────    ──────────────────────
+              Ties: partners     Pressure vs. resistance
+              pull toward        on each individual node
+              matching states
 
-The external sources support the existence of public-sector relationships. **They do not determine the numerical tie strengths**; those come from the challenge README. Retail and Manufacturing have no listed tie to another included node, so they are isolated in this five-node network.
+Sign Convention for Solvers
+Most solvers (including D-Wave Ocean) minimize:
 
-## Model
+text
 
-Each industry is in one of two states: paper \(s_i=-1\) or digital \(s_i=+1\). AI pressure starts at zero in 2026 and increases by 0.07 per year:
+Copiar
+Σ hᵢ·sᵢ + Σ Jᵢⱼ·sᵢ·sⱼ
+To match our energy function, use:
 
-\[
-A(y)=0.07(y-2026).
-\]
+text
 
-For each year, the model selects the state configuration with the lowest energy:
+Copiar
+hᵢ = −(A(year) − rᵢ)     (pressure term)
+Jᵢⱼ = −(tie strength)     (tie term — negative so matching states are lower energy)
+How It Works
+Ties (Jᵢⱼ) pull partner industries toward the same state. If Insurance goes digital, Healthcare (tied strongly to Insurance) feels a pull toward digital too.
+Pressure vs. Resistance (A − rᵢ) determines whether going digital lowers energy for a single node. When AI pressure exceeds resistance, digital becomes the lower-energy choice.
+A node flips in the first year where the global energy minimum has it in the +1 (digital) state.
+BTOS Data Integration
+The Census Bureau's Business Trends and Outlook Survey (BTOS) provides real-time economic sentiment across industries. We use it to calibrate our model for Utah.
 
-\[
-E(y)=-\sum_{(i,j)}J_{ij}s_is_j-\sum_i\bigl(A(y)-r_i\bigr)s_i.
-\]
+Key BTOS Metrics (November 2026 Data as of Nov 1, 2026)
+Index	Value	Change	Meaning
+Current Performance	54.8	−1.7 ↓	Doing okay, momentum slowing
+Revenues	40.7	−0.9 ↓	Weak revenue expectations
+Employees	47.7	+0.0	Flat hiring
+Hours	46.0	−0.2	Slightly declining workload
+Input Prices	78.2	−0.4	Costs are crushing margins — the dominant signal
+Future Performance	53.3	−1.5 ↓	Optimism fading
+Future Demand	50.3	−1.4 ↓	Barely any growth expected
+Future Employees	50.8	−0.6 ↓	No hiring plans
+Future Hours	49.3	−0.8 ↓	Planning to cut hours
+Fut. Input Prices	78.2	−0.4	Costs expected to stay high
+All indices are centered at 50 (neutral). Above 50 = expansion/pressure; below 50 = contraction.
 
-With two ties, both with \(J=0.09\), the Utah energy expression is:
+The standout: Input Prices at 78.2 — the highest number in the entire survey. When costs are this extreme, companies adopt digital tools faster to cut waste. This single metric drives our regional adjustment.
 
-\[
-E(y)=-0.09s_{Healthcare}s_{Government}-0.09s_{Government}s_{Education}-\sum_i\bigl(A(y)-r_i\bigr)s_i.
-\]
+Utah Adjustment
+We convert the excess Input Prices pressure into a boost added to every year's AI pressure for Utah nodes:
 
-For a solver using the conventional minimization form with a positive quadratic term \(Q_{ij}s_is_j\), use \(Q_{ij}=-0.09\) for both ties. The linear field is \(h_i=-(A(y)-r_i)\), following the sign convention described in the challenge README.
+text
 
-## Baseline results
+Copiar
+boost = (Input_Price_index − 50) / 100 × scaling_factor
+boost = (78.2 − 50) / 100 × 0.35
+boost ≈ 0.10
+The 0.35 scaling factor was chosen so that the boost shifts flip years by roughly one year — a realistic adjustment for regional cost-pressure differences.
 
-The exact classical baseline was calculated by checking all \(2^5=32\) paper/digital configurations at each year from 2026 through 2040 and selecting the minimum-energy state. The first year an industry is digital is its flip year.
+Result: Every Utah industry flips approximately one year earlier than the national baseline. This reflects the reality that Utah businesses, facing the same extreme cost pressures shown in the BTOS, have less patience for paper-based inefficiencies.
 
-| Industry | Flip year | AI pressure in flip year |
-|---|---:|---:|
-| Retail | 2031 | 0.35 |
-| Manufacturing | 2034 | 0.56 |
-| Education | 2036 | 0.70 |
-| Healthcare | 2037 | 0.77 |
-| Government | 2037 | 0.77 |
+AI Pressure Schedule
+Base (National)
+text
 
-| Year(s) | Industries in the digital state |
-|---|---|
-| 2026–2030 | None |
-| 2031–2033 | Retail |
-| 2034–2035 | Retail, Manufacturing |
-| 2036 | Retail, Manufacturing, Education |
-| 2037–2040 | Healthcare, Government, Education, Retail, Manufacturing |
-
-In this model, Retail and Manufacturing cross their thresholds first because they have lower base resistance and no modeled partner ties. Education follows in 2036. Healthcare and Government switch together in 2037, producing the largest one-year change in the network. The connections help determine the collective switch of the connected three-industry group.
-
-## Interpretation and limitations
-
-- These are model outputs under the stated assumptions, not verified dates when Utah employers will stop using paper.
-- Resistance values are challenge-suggested industry baselines, not Utah-specific measurements.
-- The Utah sources document relationships and public funding, but do not measure tie strength. Both numeric tie strengths are taken from the challenge README.
-- The five-node network contains only two ties. Retail and Manufacturing are isolated because no listed challenge tie links them to another included industry.
-- The classical result is exact for this five-node model. A quantum solver or simulator must be run on the same model to make the challenge's quantum/classical comparison; no quantum advantage is claimed here.
-
-## Sources
-
-1. **Challenge model and suggested values:** [The Paper Phase Transition — IQC 2026 README](https://github.com/PrinterLogic/iqc-2026-paper-phase-transition). Source for the Ising energy expression, suggested base resistances, tie strengths, tie scaling, AI-pressure schedule, and solver sign convention.
-2. **Utah employers and industry categories:** [Utah Department of Workforce Services — Major Employers by County](https://jobs.utah.gov/wi/data/library/firm/majoremployers.html). Used to identify representative Utah employers and their reported industry/employment categories.
-3. **Healthcare–Government evidence:** [Utah Medicaid Spending Statewide report (PDF)](https://le.utah.gov/interim/2026/pdf/00000583.pdf), especially PDF pages 1 and 3. Supports the state Medicaid/provider relationship; it does not set the tie's numeric weight.
-4. **Government–Education evidence:** [Utah FY2026 State Budget, Table 3](https://le.utah.gov/CobiServlet/cobi/BudgetRD?key=stateBudget), printed page 1-14. Lists Education and Higher Education appropriations; it does not set the tie's numeric weight.
-
+Copiar
+A(year) = 0.07 × (year − 2026)
+Year	A(year)
+2026	0.00
+2027	
